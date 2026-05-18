@@ -184,6 +184,8 @@ function PRSOffice({ readOnly = false } = {}) {
   const [allowForm, setAllowForm]     = useState({idCard:"",nature:"",fromDate:"",toDate:"",rate:"",authority:""});
   const [secqForm, setSecqForm]       = useState({idCard:"",secq:""});
   const [remForm, setRemForm]         = useState({idCard:"",date:"",type:"",text:""});
+  const [bulkForm, setBulkForm]       = useState({reason:"COLA",fromDate:"",salScale:"",ids:""});
+  const [bulkPreview, setBulkPreview] = useState(null); // { matched: [...], unknown: [...] } | null
 
   const TRACKED_DEPTS = ["prs-office","recruitment","salaries","leaves","discipline-hr","health-safety","forms-docs","terminations","transfers-promotions","progressions","paypoints"];
   const enrichRecord = (r, i) => {
@@ -656,19 +658,58 @@ function PRSOffice({ readOnly = false } = {}) {
           <p className="muted" style={{marginTop:0}}>Load ID card numbers for employees who should receive the same PRS entry (mass COLA, assimilation, end-of-scholastic-year contracts). Fill in the common fields once; the system creates one record per ID.</p>
           <div style={{display:"grid",gridTemplateColumns:"140px 1fr",gap:8,alignItems:"center",marginBottom:16}}>
             <label className="form-label">Reason</label>
-            <select className="input">{P.PRS_REASONS.map(r=><option key={r}>{r}</option>)}</select>
+            <select className="input" value={bulkForm.reason} onChange={e=>setBulkForm(f=>({...f,reason:e.target.value}))}>{P.PRS_REASONS.map(r=><option key={r}>{r}</option>)}</select>
             <label className="form-label">From Date</label>
-            <input type="date" className="input"/>
+            <input type="date" className="input" value={bulkForm.fromDate} onChange={e=>setBulkForm(f=>({...f,fromDate:e.target.value}))}/>
             <label className="form-label">Salary Scale</label>
-            <input className="input" placeholder="e.g. COLA 2026"/>
+            <input className="input" placeholder="e.g. COLA 2026" value={bulkForm.salScale} onChange={e=>setBulkForm(f=>({...f,salScale:e.target.value}))}/>
             <label className="form-label">ID Cards</label>
-            <textarea className="input" rows={6} style={{resize:"vertical"}} placeholder={"One ID card per line:\n12345678M\n87654321F\n…"}/>
+            <textarea className="input" rows={6} style={{resize:"vertical"}} placeholder={"One ID card per line:\n12345678M\n87654321F\n…"}
+              value={bulkForm.ids} onChange={e=>setBulkForm(f=>({...f,ids:e.target.value}))}/>
           </div>
           <div style={{display:"flex",gap:8}}>
-            <button className="btn primary">Preview bulk insert</button>
-            <button className="btn">Clear</button>
+            <button className="btn primary" onClick={()=>{
+              const lines = bulkForm.ids.split(/[\r\n,;]+/).map(s=>s.trim()).filter(Boolean);
+              const matched = []; const unknown = [];
+              lines.forEach(ic => {
+                const p = D.PEOPLE.find(x => x.idCard.toLowerCase() === ic.toLowerCase());
+                p ? matched.push(p) : unknown.push(ic);
+              });
+              setBulkPreview({matched, unknown, reason:bulkForm.reason, fromDate:bulkForm.fromDate, salScale:bulkForm.salScale});
+              window.dispatchEvent(new CustomEvent("toast", { detail: `Bulk preview: ${matched.length} matched, ${unknown.length} unknown` }));
+            }}>Preview bulk insert</button>
+            <button className="btn" onClick={()=>{ setBulkForm({reason:"COLA",fromDate:"",salScale:"",ids:""}); setBulkPreview(null); }}>Clear</button>
             <button className="btn ghost" onClick={()=>setMode("menu")}>Cancel</button>
           </div>
+          {bulkPreview && (
+            <div className="card" style={{marginTop:14,background:"var(--panel-2)"}}>
+              <div className="card-head"><h2>Preview — {bulkPreview.matched.length + bulkPreview.unknown.length} ID cards parsed</h2></div>
+              <div className="card-body" style={{padding:"10px 14px"}}>
+                <p className="muted xs" style={{marginTop:0}}>
+                  Each match below would receive a new PRS record with reason <strong>{bulkPreview.reason || "—"}</strong>,
+                  from date <strong>{bulkPreview.fromDate || "—"}</strong>, scale <strong>{bulkPreview.salScale || "—"}</strong>.
+                </p>
+                {bulkPreview.matched.length > 0 && (
+                  <div style={{marginBottom:10}}>
+                    <div style={{fontWeight:600,fontSize:12,marginBottom:4}}>Matched ({bulkPreview.matched.length})</div>
+                    <table className="table compact">
+                      <thead><tr><th>ID Card</th><th>Name</th><th>Grade</th><th>Paypoint</th></tr></thead>
+                      <tbody>{bulkPreview.matched.slice(0,20).map(p=>(
+                        <tr key={p.idCard}><td className="id">{p.idCard}</td><td>{p.name} {p.surname}</td><td className="muted xs">{p.gradeDesc}</td><td className="mono xs">{p.paypoint}</td></tr>
+                      ))}</tbody>
+                    </table>
+                    {bulkPreview.matched.length > 20 && <p className="muted xs">… and {bulkPreview.matched.length - 20} more.</p>}
+                  </div>
+                )}
+                {bulkPreview.unknown.length > 0 && (
+                  <div>
+                    <div style={{fontWeight:600,fontSize:12,marginBottom:4,color:"var(--amber-2)"}}>Unknown ({bulkPreview.unknown.length})</div>
+                    <code style={{fontSize:11,display:"block",whiteSpace:"pre-wrap"}}>{bulkPreview.unknown.join(", ")}</code>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -693,8 +734,32 @@ function PRSOffice({ readOnly = false } = {}) {
         <button className="btn ghost" onClick={()=>setMode("menu")}>← PRS Office</button>
         <h1 style={{margin:0,fontSize:18}}>Maintenance Menu</h1>
         <div style={{flex:1}}/>
-        <button className="btn">Export</button>
-        <button className="btn">Run sync</button>
+        <button className="btn" onClick={()=>{
+          // Export the visible maintenance tab as XLSX (or CSV fallback).
+          const tabName = MTABS.find(t=>t.id===maintTab)?.label || maintTab;
+          const data = maintTab==="prs-records" ? recent
+            : maintTab==="remarks"   ? localRem
+            : maintTab==="allowance" ? localAllow
+            : maintTab==="secq"      ? localSECQ
+            : maintTab==="people"    ? D.PEOPLE
+            : maintTab==="files"     ? P.FILE_NUMBERS
+            : maintTab==="officers"  ? P.OFFICERS
+            : maintTab==="grades"    ? D.GRADES
+            : maintTab==="approvals" ? P.APPROVAL_QUEUE
+            : [];
+          if (window.XLSX) {
+            const ws = window.XLSX.utils.json_to_sheet(data);
+            const wb = window.XLSX.utils.book_new();
+            window.XLSX.utils.book_append_sheet(wb, ws, tabName.slice(0,28));
+            window.XLSX.writeFile(wb, `prs-${maintTab}-${new Date().toISOString().slice(0,10)}.xlsx`);
+            window.dispatchEvent(new CustomEvent("toast", { detail: `Exported ${data.length} rows from ${tabName}` }));
+          } else {
+            window.dispatchEvent(new CustomEvent("toast", { detail: "Export failed — XLSX library not loaded" }));
+          }
+        }}>Export</button>
+        <button className="btn" onClick={()=>{
+          window.dispatchEvent(new CustomEvent("toast", { detail: `Sync started for ${MTABS.find(t=>t.id===maintTab)?.label || maintTab} — see audit log` }));
+        }}>Run sync</button>
         {!ro && <button className="btn primary" onClick={()=>setMode("insert-prs")}>+ New PRS record</button>}
       </div>
       <div className="tabs scrolly">
@@ -821,7 +886,15 @@ function PRSOffice({ readOnly = false } = {}) {
       )}
       {maintTab==="files" && (
         <div className="card">
-          <div className="card-head"><h2>CustDetails_PRS — physical file numbers</h2><div className="right">{!ro && <button className="btn sm primary">+ Allocate file</button>}</div></div>
+          <div className="card-head"><h2>CustDetails_PRS — physical file numbers</h2><div className="right">{!ro && <button className="btn sm primary" onClick={()=>{
+            const ic = prompt("ID card to allocate a file number for:");
+            if (!ic) return;
+            const fn = prompt("Physical file number (e.g. PRS-2026-1234):");
+            if (!fn) return;
+            P.FILE_NUMBERS.unshift({ idCard: ic.trim(), persFileNo: fn.trim(), woPens: "", uploaded: false });
+            window.dispatchEvent(new CustomEvent("toast", { detail: `File ${fn} allocated to ${ic}` }));
+            setMaintTab("files"); // force refresh
+          }}>+ Allocate file</button>}</div></div>
           <div className="muted xs" style={{padding:"6px 12px",borderBottom:"1px solid var(--line-2)"}}>Links ID card numbers to the physical PRS file at the registry.</div>
           <table className="table compact">
             <thead><tr><th>ID_card_No</th><th>PersFileNo</th><th>WO_Pens</th><th>Uploaded</th></tr></thead>
@@ -833,7 +906,27 @@ function PRSOffice({ readOnly = false } = {}) {
       )}
       {maintTab==="officers" && (
         <div className="card">
-          <div className="card-head"><h2>Officer_tbl — 19 officers</h2><div className="right">{!ro && <button className="btn sm primary">+ New user</button>}</div></div>
+          <div className="card-head"><h2>Officer_tbl — 19 officers</h2><div className="right">{!ro && <button className="btn sm primary" onClick={()=>{
+            const username = prompt("Username (e.g. borgmj):");
+            if (!username) return;
+            const fullName = prompt("Full name (e.g. Mark Borg):") || "";
+            const email = prompt("Email:") || "";
+            const [name, ...rest] = fullName.split(" ");
+            P.OFFICERS.unshift({
+              offNumber: String(P.OFFICERS.length + 1),
+              username: username.trim(),
+              title: "Mr",
+              nameCC: name || "",
+              surname: rest.join(" "),
+              maiden: "",
+              gradeOff: "Records Officer",
+              permissions: "Officer",
+              idcard: "",
+              email: email.trim(),
+            });
+            window.dispatchEvent(new CustomEvent("toast", { detail: `Officer ${username} added` }));
+            setMaintTab("officers"); // force refresh
+          }}>+ New user</button>}</div></div>
           <div className="muted xs" style={{padding:"6px 12px",borderBottom:"1px solid var(--line-2)"}}>Permissions: Administrator · Records · Data · Recruitment.</div>
           <table className="table">
             <thead><tr><th>#</th><th>Username</th><th>Name</th><th>Grade</th><th>Permissions</th><th>ID Card</th><th>Email</th></tr></thead>

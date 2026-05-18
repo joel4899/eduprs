@@ -1,0 +1,45 @@
+.git
+.gitignore
+.gitattributes
+.github
+
+# Local config & secrets — Render supplies these via env vars.
+.env
+.env.local
+.env.*.local
+
+# Local build artefacts
+vendor/
+node_modules/
+public/build/
+public/hot
+public/storage
+
+# Local DB (we use Postgres on Render)
+database/database.sqlite
+
+# IDE / OS
+.idea/
+.vscode/
+.fleet/
+.DS_Store
+Thumbs.db
+
+# Logs & runtime
+storage/logs/*.log
+storage/framework/cache/data/
+storage/framework/sessions/*
+storage/framework/views/*
+storage/framework/testing/
+
+# Tests / docs not needed at runtime
+tests/
+phpunit.xml
+phpstan.neon
+.phpunit.cache/
+.phpunit.result.cache
+AUDIT_*.md
+FUNCTIONALITY_AUDIT.md
+
+# Composer cache
+~/.composer

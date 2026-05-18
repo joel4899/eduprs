@@ -552,7 +552,14 @@ function GP47Deep() {
       {id:"view-service",  icon:"▤", label:"View PRS (Service)",     desc:"Browse the underlying service-history records",      needsPerson:true,  onClick:()=>{if(foundPerson)openService();}},
       {id:"by-date",       icon:"📅",label:"Create GP 47 — by Date", desc:"Generate the official GP47 sorted by effective date",needsPerson:true,  onClick:()=>{if(foundPerson)openGP47("date");}},
       {id:"by-time",       icon:"⏱", label:"Create GP 47 — by Time", desc:"Generate sorted by date/time the record was added",  needsPerson:true,  onClick:()=>{if(foundPerson)openGP47("time");}},
-      {id:"poma",          icon:"★", label:"POMA GP47",              desc:"Public Officer Management Authority GP47 variant",   needsPerson:false, onClick:()=>{}},
+      {id:"poma",          icon:"★", label:"POMA GP47",              desc:"Public Officer Management Authority GP47 variant",   needsPerson:false, onClick:()=>{
+        if (foundPerson) {
+          openGP47("date");
+          window.dispatchEvent(new CustomEvent("toast", { detail: `POMA GP47 generated for ${foundPerson.name} ${foundPerson.surname}` }));
+        } else {
+          window.dispatchEvent(new CustomEvent("toast", { detail: "Look up an employee first — POMA GP47 will use that record." }));
+        }
+      }},
       {id:"bulk-input",    icon:"↑", label:"Bulk Input from Excel",  desc:"Upload an Excel file to bulk-load PRS records",      needsPerson:false, onClick:()=>setMode("bulk-input")},
       {id:"clear",         icon:"✕", label:"Clear / Exit GP47",      desc:"Reset the lookup and bulk-loaded buffer",            needsPerson:false, onClick:()=>{setIdCard(""); setLocalPRS([]);}},
     ];

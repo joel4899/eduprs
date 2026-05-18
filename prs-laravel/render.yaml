@@ -1,0 +1,73 @@
+# Render blueprint — one-click deploy.
+# Use this by running `render blueprint launch` or via the Render dashboard:
+# "New" → "Blueprint" → point at this repo.
+#
+# Provisions:
+#   - A web service that builds from Dockerfile
+#   - A free Postgres database
+#   - The Postgres connection details wired into the web service's env
+
+services:
+  - type: web
+    name: prs-laravel
+    runtime: docker
+    plan: free
+    region: frankfurt
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /
+    envVars:
+      - key: APP_KEY
+        generateValue: true            # Render fills in a random value once
+      - key: APP_NAME
+        value: PRS System
+      - key: APP_ENV
+        value: production
+      - key: APP_DEBUG
+        value: "false"
+      - key: APP_URL
+        sync: false                    # Set to the .onrender.com URL after first deploy
+      - key: LOG_CHANNEL
+        value: stderr
+      - key: LOG_LEVEL
+        value: info
+      - key: DB_CONNECTION
+        value: pgsql
+      - key: DB_HOST
+        fromDatabase:
+          name: prs-postgres
+          property: host
+      - key: DB_PORT
+        fromDatabase:
+          name: prs-postgres
+          property: port
+      - key: DB_DATABASE
+        fromDatabase:
+          name: prs-postgres
+          property: database
+      - key: DB_USERNAME
+        fromDatabase:
+          name: prs-postgres
+          property: user
+      - key: DB_PASSWORD
+        fromDatabase:
+          name: prs-postgres
+          property: password
+      - key: SESSION_DRIVER
+        value: database
+      - key: CACHE_STORE
+        value: database
+      - key: QUEUE_CONNECTION
+        value: database
+      - key: PRS_REQUIRE_AUTH
+        value: "true"
+      # Seed the 13 demo officers on first boot. Set this back to "false"
+      # before going to real users.
+      - key: PRS_SEED_DEMO_USERS
+        value: "true"
+
+databases:
+  - name: prs-postgres
+    plan: free
+    databaseName: prs
+    user: prs_app
+    region: frankfurt
