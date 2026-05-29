@@ -8,7 +8,7 @@ on:
 jobs:
   deploy:
     name: Build & Deploy
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
 
     steps:
       # -----------------------------------------------------------------------
@@ -18,75 +18,41 @@ jobs:
         uses: actions/checkout@v4
 
       # -----------------------------------------------------------------------
-      # 2. PHP + Composer (build vendor/ on the runner)
+      # 2. PHP dependencies
       # -----------------------------------------------------------------------
-      - name: Set up PHP 8.4
-        uses: shivammathur/setup-php@v2
-        with:
-          php-version: '8.4'
-          extensions: pdo_mysql, mbstring, zip, intl, bcmath, gd, opcache
-          coverage: none
-
       - name: Install PHP dependencies
         run: composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist
 
       # -----------------------------------------------------------------------
-      # 3. Node + Vite (build public/build/ on the runner)
+      # 3. Frontend assets
       # -----------------------------------------------------------------------
-      - name: Set up Node.js 20
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
       - name: Build frontend assets
         run: npm install && npm run build
 
       # -----------------------------------------------------------------------
-      # 4. Rsync everything to the Hetzner server
-      #    - vendor/ and public/build/ are included (built above)
-      #    - .env is excluded so the server's own .env is never overwritten
-      #    - storage/logs, sessions, and cache are excluded from --delete
-      #      so runtime data on the server is preserved across deploys
+      # 4. Sync built files to app directory (local — no SSH needed)
+      #    .env is excluded so the server's copy is never overwritten
       # -----------------------------------------------------------------------
-      - name: Deploy files via rsync
-        env:
-          SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
-          SSH_HOST: ${{ secrets.SSH_HOST }}
-          SSH_USER: ${{ secrets.SSH_USER }}
-          SSH_PORT: ${{ secrets.SSH_PORT || '22' }}
-          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+      - name: Sync to app directory
         run: |
-          mkdir -p ~/.ssh
-          echo "$SSH_KEY" > ~/.ssh/deploy_key
-          chmod 600 ~/.ssh/deploy_key
-          rsync -az --delete \
+          rsync -a --delete \
             --exclude='.git' \
             --exclude='.env' \
-            --exclude='node_modules' \
-            --exclude='tests' \
             --exclude='storage/logs' \
             --exclude='storage/framework/cache' \
             --exclude='storage/framework/sessions' \
             --exclude='storage/framework/views' \
-            --exclude='storage/app/public' \
-            -e "ssh -i ~/.ssh/deploy_key -p $SSH_PORT -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null" \
-            ./ "$SSH_USER@$SSH_HOST:$DEPLOY_PATH/"
+            ./ $HOME/eduprs/
 
       # -----------------------------------------------------------------------
-      # 5. Post-deploy: migrate, fix permissions, rebuild caches
+      # 5. Post-deploy artisan commands
       # -----------------------------------------------------------------------
-      - name: Run post-deploy commands
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          port: ${{ secrets.SSH_PORT || '22' }}
-          script: |
-            cd ${{ secrets.DEPLOY_PATH }}
-            php artisan migrate --force --no-interaction
-            php artisan storage:link --force
-            chmod -R 775 storage bootstrap/cache
-            php artisan config:cache
-            php artisan route:cache
-            php artisan view:cache
+      - name: Run artisan commands
+        run: |
+          cd $HOME/eduprs
+          php artisan migrate --force --no-interaction
+          php artisan storage:link --force
+          chmod -R 775 storage bootstrap/cache
+          php artisan config:cache
+          php artisan route:cache
+          php artisan view:cache
