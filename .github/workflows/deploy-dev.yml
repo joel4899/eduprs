@@ -50,6 +50,7 @@ jobs:
       - name: Run artisan commands
         run: |
           cd $HOME/eduprs
+          mkdir -p storage/framework/{cache,sessions,views,testing}
           php artisan migrate --force --no-interaction
           php artisan storage:link --force
           chmod -R 775 storage bootstrap/cache
